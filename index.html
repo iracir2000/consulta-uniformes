@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0f766e">
+<title>Consulta de Uniformes</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:#f4f7f7;color:#18312f}
+.container{max-width:520px;margin:auto;padding:20px}header{text-align:center;padding:20px 0 10px}
+.logo{font-size:42px}.title{font-size:27px;font-weight:800;margin:8px 0}.sub{color:#607371}
+.box{background:#fff;border-radius:18px;padding:20px;box-shadow:0 6px 24px #0001;margin-top:18px}
+label{display:block;font-weight:700;margin-bottom:8px}input{width:100%;padding:15px;border:1px solid #ccd8d6;border-radius:12px;font-size:18px}
+button{width:100%;margin-top:12px;padding:15px;border:0;border-radius:12px;background:#0f766e;color:white;font-size:17px;font-weight:700}
+button:disabled{opacity:.6}.person{margin-top:20px}.name{font-size:21px;font-weight:800}.badge{color:#607371;margin-top:4px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:15px}.card{border-radius:16px;padding:16px;background:#f7faf9;border:1px solid #e1e9e7}
+.card h3{margin:0 0 12px;font-size:18px}.icon{font-size:30px}.status{font-weight:800;margin:10px 0}.yes{color:#087443}.no{color:#b54708}
+.date{font-size:14px;color:#526562;margin-top:5px}.error{color:#b42318;background:#fff1f0;padding:12px;border-radius:12px;margin-top:15px}
+.loading{display:none;text-align:center;margin-top:12px;color:#607371}footer{text-align:center;color:#82918f;font-size:12px;margin:22px 0}
+@media(max-width:390px){.grid{grid-template-columns:1fr}}
+</style></head>
+<body><div class="container">
+<header><div class="logo">👕👖</div><div class="title">Consulta de Uniformes</div>
+<div class="sub">Consulte sua disponibilidade pelo crachá</div></header>
+<section class="box"><label for="cracha">Número do crachá</label>
+<input id="cracha" inputmode="numeric" autocomplete="off" placeholder="Digite seu crachá">
+<button id="consultar">Consultar</button><div class="loading" id="loading">Consultando...</div>
+<div id="resultado"></div></section><footer>Sistema de consulta de uniformes</footer></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const SUPABASE_URL="https://zmevkfzefhadclyrrdxm.supabase.co";
+const SUPABASE_KEY="sb_publishable_QIElPV1So45rJMUopN1Pdg_Nb8CY_m4";
+const client=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+const btn=document.getElementById("consultar"),input=document.getElementById("cracha"),
+out=document.getElementById("resultado"),loading=document.getElementById("loading");
+function brDate(v){if(!v)return"Nenhuma entrega registrada";const[y,m,d]=v.slice(0,10).split("-");return d+"/"+m+"/"+y}
+function card(icon,title,last,next,right){return '<div class="card"><div class="icon">'+icon+'</div><h3>'+title+'</h3><div class="status '+(right?'yes':'no')+'">'+(right?'VOCÊ TEM DIREITO':'AINDA NÃO TEM DIREITO')+'</div><div class="date"><b>Última entrega:</b><br>'+brDate(last)+'</div><div class="date"><b>Próximo direito:</b><br>'+brDate(next)+'</div></div>'}
+async function consultar(){const cracha=input.value.trim();out.innerHTML="";
+if(!/^\d+$/.test(cracha)){out.innerHTML='<div class="error">Digite um número de crachá válido.</div>';return}
+btn.disabled=true;loading.style.display="block";
+try{const{data,error}=await client.rpc("consultar_uniforme",{p_cracha:Number(cracha)});
+if(error)throw error;if(!data||!data.length){out.innerHTML='<div class="error">Crachá não encontrado na base atual.</div>';return}
+const p=data[0];out.innerHTML='<div class="person"><div class="name">'+p.nome+'</div><div class="badge">Crachá: '+p.cracha+'</div></div><div class="grid">'+
+card("👕","Camisa",p.ultima_camisa,p.proxima_camisa,p.direito_camisa)+
+card("👖","Calça",p.ultima_calca,p.proxima_calca,p.direito_calca)+'</div>';
+}catch(e){out.innerHTML='<div class="error">Não foi possível realizar a consulta. Tente novamente.</div>';console.error(e)}
+finally{btn.disabled=false;loading.style.display="none"}}
+btn.addEventListener("click",consultar);input.addEventListener("keydown",e=>{if(e.key==="Enter")consultar()});
+</script></body></html>
