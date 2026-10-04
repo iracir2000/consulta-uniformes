@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0f766e">
+<title>ADM — Consulta de Uniformes</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:#f4f7f7;color:#18312f}
+.container{max-width:700px;margin:auto;padding:20px}header{text-align:center;padding:16px 0}
+.logo{font-size:38px}.title{font-size:26px;font-weight:800;margin:7px 0}.sub{color:#607371}
+.box{background:#fff;border-radius:18px;padding:20px;box-shadow:0 6px 24px #0001;margin-top:16px}
+label{display:block;font-weight:700;margin-bottom:7px}input{width:100%;padding:14px;border:1px solid #ccd8d6;border-radius:12px;font-size:16px;margin-bottom:10px}
+button{width:100%;margin-top:10px;padding:14px;border:0;border-radius:12px;background:#0f766e;color:#fff;font-size:16px;font-weight:700}
+button.secondary{background:#607371}button.danger{background:#9f1239}
+button:disabled{opacity:.55}.hidden{display:none}.msg{padding:12px;border-radius:12px;margin-top:14px;background:#eef7f5}.error{background:#fff1f0;color:#9f1239}.ok{background:#ecfdf3;color:#166534}
+h2{font-size:20px;margin:0 0 12px}.small{font-size:13px;color:#607371;line-height:1.45}.summary{padding:14px;background:#f7faf9;border:1px solid #e1e9e7;border-radius:12px;margin-top:12px}
+#progress{margin-top:12px;font-weight:700}.topbar{display:flex;justify-content:space-between;align-items:center;gap:10px}.topbar button{width:auto;margin:0;padding:9px 12px;font-size:13px}
+</style>
+</head>
+<body>
+<div class="container">
+<header><div class="logo">🔐📊</div><div class="title">Área Administrativa</div><div class="sub">Consulta de Uniformes</div></header>
+
+<section class="box" id="loginBox">
+<h2>Entrar</h2>
+<label for="email">E-mail</label><input id="email" type="email" autocomplete="username" placeholder="seu e-mail">
+<label for="password">Senha</label><input id="password" type="password" autocomplete="current-password" placeholder="Sua senha">
+<button id="loginBtn">Entrar</button>
+<div id="loginMsg"></div>
+</section>
+
+<section class="box hidden" id="adminBox">
+<div class="topbar"><div><h2>Importar Base de Dados</h2><div class="small" id="userInfo"></div></div><button class="secondary" id="logoutBtn">Sair</button></div>
+<p class="small">Selecione a planilha completa. O sistema usará somente a aba <b>BASE DE DADOS</b>, validará as colunas e criará uma nova versão sem apagar o histórico anterior.</p>
+<input id="file" type="file" accept=".xlsx,.xlsm,.xls">
+<button id="validateBtn" disabled>Validar planilha</button>
+<div id="fileMsg"></div>
+<div id="summary"></div>
+<button id="importBtn" class="hidden">Confirmar e importar</button>
+<div id="progress"></div>
+</section>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script>
+const SUPABASE_URL="https://zmevkfzefhadclyrrdxm.supabase.co";
+const SUPABASE_KEY="sb_publishable_QIElPV1So45rJMUopN1Pdg_Nb8CY_m4";
+const client=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+const $=id=>document.getElementById(id);
+let preparedRows=null, selectedFile=null;
+
+function msg(el,text,type=""){el.innerHTML='<div class="msg '+type+'">'+text+'</div>'}
+function clean(v){return v===undefined||v===null||v===""?null:v}
+function excelDate(v){
+  if(v instanceof Date) return v.toISOString().slice(0,10);
+  if(typeof v==="number"){const d=XLSX.SSF.parse_date_code(v); if(!d)return null; return String(d.y).padStart(4,"0")+"-"+String(d.m).padStart(2,"0")+"-"+String(d.d).padStart(2,"0")}
+  if(typeof v==="string"){const s=v.trim(); if(/^\d{4}-\d{2}-\d{2}/.test(s))return s.slice(0,10); const m=s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/); if(m)return m[3]+"-"+String(m[2]).padStart(2,"0")+"-"+String(m[1]).padStart(2,"0")}
+  return null;
+}
+async function checkAdmin(){
+  const {data:{session}}=await client.auth.getSession();
+  if(!session){$("loginBox").classList.remove("hidden");$("adminBox").classList.add("hidden");return}
+  const {data,isError,error}=await client.rpc("is_admin");
+  if(error||data!==true){await client.auth.signOut();msg($("loginMsg"),"Este usuário não possui acesso administrativo.","error");return}
+  $("loginBox").classList.add("hidden");$("adminBox").classList.remove("hidden");$("userInfo").textContent=session.user.email||"Usuário autenticado";
+}
+$("loginBtn").onclick=async()=>{
+  const email=$("email").value.trim(),password=$("password").value;
+  $("loginBtn").disabled=true;
+  const {error}=await client.auth.signInWithPassword({email,password});
+  if(error)msg($("loginMsg"),error.message,"error"); else {msg($("loginMsg"),"Login realizado.");await checkAdmin()}
+  $("loginBtn").disabled=false;
+};
+$("logoutBtn").onclick=async()=>{await client.auth.signOut();location.reload()};
+$("file").onchange=()=>{selectedFile=$("file").files[0]||null;$("validateBtn").disabled=!selectedFile;preparedRows=null;$("importBtn").classList.add("hidden");$("summary").innerHTML="";$("fileMsg").innerHTML=""};
+
+$("validateBtn").onclick=async()=>{
+  if(!selectedFile)return;
+  $("validateBtn").disabled=true;msg($("fileMsg"),"Lendo e validando a planilha...");
+  try{
+    const buf=await selectedFile.arrayBuffer();
+    const wb=XLSX.read(buf,{type:"array",cellDates:true});
+    if(!wb.SheetNames.includes("BASE DE DADOS"))throw new Error('A aba "BASE DE DADOS" não foi encontrada.');
+    const ws=wb.Sheets["BASE DE DADOS"];
+    const rows=XLSX.utils.sheet_to_json(ws,{defval:null,raw:true});
+    const required=["Crachá","Nome","Turno","Data","Camisa","Calça","Motivo","Gestor"];
+    if(!rows.length)throw new Error("A aba BASE DE DADOS está vazia.");
+    const cols=Object.keys(rows[0]);
+    const missing=required.filter(c=>!cols.includes(c));
+    if(missing.length)throw new Error("Colunas ausentes: "+missing.join(", "));
+    const errors=[];
+    preparedRows=rows.map((r,i)=>{
+      const cracha=Number(r["Crachá"]);
+      const data=excelDate(r["Data"]);
+      if(!Number.isFinite(cracha)||!data){if(errors.length<10)errors.push("Linha "+(i+2)+": crachá ou data inválidos.");return null}
+      return {
+        cracha:Math.trunc(cracha),nome:String(clean(r["Nome"])??"").trim(),turno:clean(r["Turno"])===null?null:String(r["Turno"]),
+        data,camisa:clean(r["Camisa"])===null?null:Number(r["Camisa"]),calca:clean(r["Calça"])===null?null:Number(r["Calça"]),
+        motivo:clean(r["Motivo"])===null?null:String(r["Motivo"]),gestor:clean(r["Gestor"])===null?null:String(r["Gestor"])
+      };
+    }).filter(Boolean);
+    if(errors.length)throw new Error(errors.join("<br>"));
+    $("summary").innerHTML='<div class="summary"><b>Planilha validada.</b><br>Arquivo: '+selectedFile.name+'<br>Registros prontos: <b>'+preparedRows.length.toLocaleString("pt-BR")+'</b><br>Aba utilizada: <b>BASE DE DADOS</b></div>';
+    $("importBtn").classList.remove("hidden");msg($("fileMsg"),"Tudo certo. Confira o resumo e, se estiver correto, confirme a importação.","ok");
+  }catch(e){preparedRows=null;$("importBtn").classList.add("hidden");msg($("fileMsg"),e.message||"Erro ao validar a planilha.","error")}
+  finally{$("validateBtn").disabled=false}
+};
+
+$("importBtn").onclick=async()=>{
+  if(!preparedRows||!preparedRows.length)return;
+  if(!confirm("Confirma a importação desta base? A nova versão substituirá a versão atual nas consultas."))return;
+  $("importBtn").disabled=true;$("validateBtn").disabled=true;$("progress").textContent="Criando nova versão...";
+  try{
+    const {data:batch,error:be}=await client.from("import_batches").insert({file_name:selectedFile.name,row_count:preparedRows.length,status:"pending",notes:"Importação pela Área ADM"}).select("id").single();
+    if(be)throw be;
+    const batchId=batch.id, chunkSize=500;
+    for(let i=0;i<preparedRows.length;i+=chunkSize){
+      const chunk=preparedRows.slice(i,i+chunkSize).map(r=>({...r,import_batch_id:batchId}));
+      const {error}=await client.from("uniform_movements").insert(chunk);
+      if(error)throw error;
+      $("progress").textContent="Importando: "+Math.min(i+chunkSize,preparedRows.length).toLocaleString("pt-BR")+" / "+preparedRows.length.toLocaleString("pt-BR");
+    }
+    const {error:arch}=await client.from("import_batches").update({status:"archived"}).eq("status","active");
+    if(arch)throw arch;
+    const {error:act}=await client.from("import_batches").update({status:"active",row_count:preparedRows.length}).eq("id",batchId);
+    if(act)throw act;
+    $("progress").innerHTML='<div class="msg ok"><b>Importação concluída!</b><br>'+preparedRows.length.toLocaleString("pt-BR")+' registros agora estão na base atual.</div>';
+    $("importBtn").classList.add("hidden");preparedRows=null;
+  }catch(e){
+    $("progress").innerHTML='<div class="msg error"><b>Importação interrompida.</b><br>'+((e&&e.message)||"Erro desconhecido")+'<br><span class="small">A versão anterior continua preservada se a nova não foi ativada.</span></div>';
+  }finally{$("importBtn").disabled=false;$("validateBtn").disabled=false}
+};
+checkAdmin();
+</script>
+</body>
+</html>
