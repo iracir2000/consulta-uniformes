@@ -43,7 +43,7 @@ if(error)throw error;if(!data||!data.length){out.innerHTML='<div class="error">C
 const p=data[0];out.innerHTML='<div class="person"><div class="name">'+p.nome+'</div><div class="badge">Crachá: '+p.cracha+'</div></div><div class="grid">'+
 card("👕","Camisa",p.ultima_camisa,p.proxima_camisa,p.direito_camisa)+
 card("👖","Calça",p.ultima_calca,p.proxima_calca,p.direito_calca)+'</div>';
-}catch(e){out.innerHTML='<div class="error">Não foi possível realizar a consulta. Tente novamente.</div>';console.error(e)}
+}catch(e){const msg=e?.message||e?.error_description||JSON.stringify(e);out.innerHTML='<div class="error"><b>Erro na consulta:</b><br>'+msg+'</div>';console.error(e)}
 finally{btn.disabled=false;loading.style.display="none"}}
 btn.addEventListener("click",consultar);input.addEventListener("keydown",e=>{if(e.key==="Enter")consultar()});
 </script></body></html>
