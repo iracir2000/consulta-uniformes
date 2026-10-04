@@ -29,7 +29,7 @@ h2{font-size:20px;margin:0 0 12px}.small{font-size:13px;color:#607371;line-heigh
 <h2>Entrar</h2>
 <label for="email">E-mail</label><input id="email" type="email" autocomplete="username" placeholder="seu e-mail">
 <label for="password">Senha</label><input id="password" type="password" autocomplete="current-password" placeholder="Sua senha">
-<button id="loginBtn">Entrar</button>
+<button id="loginBtn" type="button" onclick="doLogin()">Entrar</button>
 <div id="loginMsg"></div>
 </section>
 
@@ -80,55 +80,71 @@ function excelDate(v){
   if(typeof v==="string"){const s=v.trim(); if(/^\d{4}-\d{2}-\d{2}/.test(s))return s.slice(0,10); const m=s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/); if(m)return m[3]+"-"+String(m[2]).padStart(2,"0")+"-"+String(m[1]).padStart(2,"0")}
   return null;
 }
-async function checkAdmin(){
-  if(!client){return}
+async function doLogin(){
+  const btn=$("loginBtn");
+  const email=$("email").value.trim();
+  const password=$("password").value;
+  btn.disabled=true;
+  btn.textContent="Entrando...";
+  msg($("loginMsg"),"Conectando ao servidor...");
   try{
-    const {data:{session},error:sessionError}=await client.auth.getSession();
-    if(sessionError)throw sessionError;
-    if(!session){$("loginBox").classList.remove("hidden");$("adminBox").classList.add("hidden");return}
-    const {data,error}=await client.rpc("is_admin");
-    if(error)throw error;
-    if(data!==true){
-      await client.auth.signOut();
-      msg($("loginMsg"),"Este usuário não possui acesso administrativo.","error");
-      return;
+    if(!email||!password) throw new Error("Informe o e-mail e a senha.");
+    const res=await fetch(SUPABASE_URL+"/auth/v1/token?grant_type=password",{
+      method:"POST",
+      headers:{
+        "Content-Type":"application/json",
+        "apikey":SUPABASE_KEY
+      },
+      body:JSON.stringify({email,password})
+    });
+    const data=await res.json().catch(()=>({}));
+    if(!res.ok) throw new Error(data.error_description||data.msg||data.message||"Falha no login.");
+    if(!data.access_token) throw new Error("O servidor não retornou o token de acesso.");
+    const {data:adminData,error:adminError}=await fetch(SUPABASE_URL+"/rest/v1/rpc/is_admin",{
+      method:"POST",
+      headers:{
+        "Content-Type":"application/json",
+        "apikey":SUPABASE_KEY,
+        "Authorization":"Bearer "+data.access_token
+      }
+    }).then(async r=>({data:await r.json().catch(()=>null),error:r.ok?null:(await r.text().catch(()=>''))}));
+    if(adminError) throw new Error("Erro ao verificar administrador: "+adminError);
+    if(adminData!==true) throw new Error("Este usuário não possui acesso administrativo.");
+    if(client){
+      await client.auth.setSession({access_token:data.access_token,refresh_token:data.refresh_token});
     }
+    $("loginBox").classList.add("hidden");
+    $("adminBox").classList.remove("hidden");
+    $("userInfo").textContent=email;
+    await loadDashboard();
+  }catch(e){
+    console.error(e);
+    msg($("loginMsg"),e?.message||"Não foi possível realizar o login.","error");
+  }finally{
+    btn.disabled=false;
+    btn.textContent="Entrar";
+  }
+}
+
+async function checkAdmin(){
+  if(!client)return;
+  try{
+    const {data:{session},error}=await client.auth.getSession();
+    if(error)throw error;
+    if(!session){$("loginBox").classList.remove("hidden");$("adminBox").classList.add("hidden");return}
+    const {data,error:rpcError}=await client.rpc("is_admin");
+    if(rpcError)throw rpcError;
+    if(data!==true){await client.auth.signOut();return}
     $("loginBox").classList.add("hidden");
     $("adminBox").classList.remove("hidden");
     $("userInfo").textContent=session.user.email||"Usuário autenticado";
     await loadDashboard();
   }catch(e){
     console.error(e);
-    msg($("loginMsg"),"Erro ao verificar o acesso: "+(e?.message||"erro desconhecido"),"error");
   }
 }
-$("loginBtn").onclick=async()=>{
-  if(!client){
-    msg($("loginMsg"),"O sistema de login não carregou. Recarregue a página.","error");
-    return;
-  }
-  const email=$("email").value.trim(),password=$("password").value;
-  if(!email||!password){
-    msg($("loginMsg"),"Informe o e-mail e a senha.","error");
-    return;
-  }
-  $("loginBtn").disabled=true;
-  $("loginBtn").textContent="Entrando...";
-  $("loginMsg").innerHTML="";
-  try{
-    const {error}=await client.auth.signInWithPassword({email,password});
-    if(error)throw error;
-    msg($("loginMsg"),"Login realizado. Carregando painel...","ok");
-    await checkAdmin();
-  }catch(e){
-    console.error(e);
-    msg($("loginMsg"),e?.message||"Não foi possível realizar o login.","error");
-  }finally{
-    $("loginBtn").disabled=false;
-    $("loginBtn").textContent="Entrar";
-  }
-};
-$("logoutBtn").onclick=async()=>{await client.auth.signOut();location.reload()};
+$("logoutBtn").onclick=async()=>{if(client)await client.auth.signOut();location.reload()};
+
 async function loadDashboard(){
   const {data,error}=await client.from("import_batches")
     .select("id,file_name,imported_at,row_count,status,notes")
