@@ -16,9 +16,6 @@ button.secondary{background:#607371}button.danger{background:#9f1239}
 button:disabled{opacity:.55}.hidden{display:none}.msg{padding:12px;border-radius:12px;margin-top:14px;background:#eef7f5}.error{background:#fff1f0;color:#9f1239}.ok{background:#ecfdf3;color:#166534}
 h2{font-size:20px;margin:0 0 12px}.small{font-size:13px;color:#607371;line-height:1.45}.summary{padding:14px;background:#f7faf9;border:1px solid #e1e9e7;border-radius:12px;margin-top:12px}
 #progress{margin-top:12px;font-weight:700}.topbar{display:flex;justify-content:space-between;align-items:center;gap:10px}.topbar button{width:auto;margin:0;padding:9px 12px;font-size:13px}
-.dashboard{margin-top:18px;padding-top:4px}.dash-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}.dash-head h2{margin:0}.smallbtn{width:auto!important;margin:0!important;padding:8px 11px!important;font-size:13px!important}
-.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.card{background:#f7faf9;border:1px solid #e1e9e7;border-radius:14px;padding:13px}.card-icon{font-size:22px}.card-label{font-size:12px;color:#607371;margin-top:5px}.card-value{font-size:22px;font-weight:800;margin-top:3px}.card-value.date{font-size:15px;line-height:1.25}.history{margin-top:12px;border:1px solid #e1e9e7;border-radius:14px;overflow:hidden}.history-title{font-weight:800;padding:12px;background:#f7faf9}.history-row{padding:11px 12px;border-top:1px solid #e8efed}.history-row b{display:block}.badge{display:inline-block;margin-top:5px;padding:3px 8px;border-radius:999px;background:#e8efed;font-size:11px;font-weight:700}.badge.active{background:#dcfce7;color:#166534}.badge.archived{background:#eef2f2;color:#607371}
-@media(max-width:520px){.cards{grid-template-columns:1fr 1fr}.card:last-child{grid-column:1/-1}}
 </style>
 </head>
 <body>
@@ -29,26 +26,13 @@ h2{font-size:20px;margin:0 0 12px}.small{font-size:13px;color:#607371;line-heigh
 <h2>Entrar</h2>
 <label for="email">E-mail</label><input id="email" type="email" autocomplete="username" placeholder="seu e-mail">
 <label for="password">Senha</label><input id="password" type="password" autocomplete="current-password" placeholder="Sua senha">
-<button id="loginBtn" type="button" onclick="doLogin()">Entrar</button>
+<button id="loginBtn">Entrar</button>
 <div id="loginMsg"></div>
 </section>
 
 <section class="box hidden" id="adminBox">
 <div class="topbar"><div><h2>Importar Base de Dados</h2><div class="small" id="userInfo"></div></div><button class="secondary" id="logoutBtn">Sair</button></div>
 <p class="small">Selecione a planilha completa. O sistema usará somente a aba <b>BASE DE DADOS</b>, validará as colunas e criará uma nova versão sem apagar o histórico anterior.</p>
-<div class="dashboard">
-  <div class="dash-head"><h2>Painel</h2><button class="secondary smallbtn" id="refreshDashBtn">Atualizar</button></div>
-  <div class="cards">
-    <div class="card"><div class="card-icon">📦</div><div class="card-label">Registros na base atual</div><div class="card-value" id="dashRows">—</div></div>
-    <div class="card"><div class="card-icon">🗂️</div><div class="card-label">Versões importadas</div><div class="card-value" id="dashVersions">—</div></div>
-    <div class="card"><div class="card-icon">📅</div><div class="card-label">Última importação</div><div class="card-value date" id="dashDate">—</div></div>
-  </div>
-  <div id="dashMsg"></div>
-  <div class="history">
-    <div class="history-title">Histórico recente</div>
-    <div id="historyList" class="small">Carregando...</div>
-  </div>
-</div>
 <input id="file" type="file" accept=".xlsx,.xlsm,.xls">
 <button id="validateBtn" disabled>Validar planilha</button>
 <div id="fileMsg"></div>
@@ -63,13 +47,8 @@ h2{font-size:20px;margin:0 0 12px}.small{font-size:13px;color:#607371;line-heigh
 <script>
 const SUPABASE_URL="https://zmevkfzefhadclyrrdxm.supabase.co";
 const SUPABASE_KEY="sb_publishable_QIElPV1So45rJMUopN1Pdg_Nb8CY_m4";
+const client=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 const $=id=>document.getElementById(id);
-let client=null;
-if(window.supabase?.createClient){
-  client=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
-}else{
-  document.getElementById("loginMsg").innerHTML='<div class="msg error">Não foi possível carregar o sistema de login. Recarregue a página e tente novamente.</div>';
-}
 let preparedRows=null, selectedFile=null;
 
 function msg(el,text,type=""){el.innerHTML='<div class="msg '+type+'">'+text+'</div>'}
@@ -80,90 +59,21 @@ function excelDate(v){
   if(typeof v==="string"){const s=v.trim(); if(/^\d{4}-\d{2}-\d{2}/.test(s))return s.slice(0,10); const m=s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/); if(m)return m[3]+"-"+String(m[2]).padStart(2,"0")+"-"+String(m[1]).padStart(2,"0")}
   return null;
 }
-async function doLogin(){
-  const btn=$("loginBtn");
-  const email=$("email").value.trim();
-  const password=$("password").value;
-  btn.disabled=true;
-  btn.textContent="Entrando...";
-  msg($("loginMsg"),"Conectando ao servidor...");
-  try{
-    if(!email||!password) throw new Error("Informe o e-mail e a senha.");
-    const res=await fetch(SUPABASE_URL+"/auth/v1/token?grant_type=password",{
-      method:"POST",
-      headers:{
-        "Content-Type":"application/json",
-        "apikey":SUPABASE_KEY
-      },
-      body:JSON.stringify({email,password})
-    });
-    const data=await res.json().catch(()=>({}));
-    if(!res.ok) throw new Error(data.error_description||data.msg||data.message||"Falha no login.");
-    if(!data.access_token) throw new Error("O servidor não retornou o token de acesso.");
-    const {data:adminData,error:adminError}=await fetch(SUPABASE_URL+"/rest/v1/rpc/is_admin",{
-      method:"POST",
-      headers:{
-        "Content-Type":"application/json",
-        "apikey":SUPABASE_KEY,
-        "Authorization":"Bearer "+data.access_token
-      }
-    }).then(async r=>({data:await r.json().catch(()=>null),error:r.ok?null:(await r.text().catch(()=>''))}));
-    if(adminError) throw new Error("Erro ao verificar administrador: "+adminError);
-    if(adminData!==true) throw new Error("Este usuário não possui acesso administrativo.");
-    if(client){
-      await client.auth.setSession({access_token:data.access_token,refresh_token:data.refresh_token});
-    }
-    $("loginBox").classList.add("hidden");
-    $("adminBox").classList.remove("hidden");
-    $("userInfo").textContent=email;
-    await loadDashboard();
-  }catch(e){
-    console.error(e);
-    msg($("loginMsg"),e?.message||"Não foi possível realizar o login.","error");
-  }finally{
-    btn.disabled=false;
-    btn.textContent="Entrar";
-  }
-}
-
 async function checkAdmin(){
-  if(!client)return;
-  try{
-    const {data:{session},error}=await client.auth.getSession();
-    if(error)throw error;
-    if(!session){$("loginBox").classList.remove("hidden");$("adminBox").classList.add("hidden");return}
-    const {data,error:rpcError}=await client.rpc("is_admin");
-    if(rpcError)throw rpcError;
-    if(data!==true){await client.auth.signOut();return}
-    $("loginBox").classList.add("hidden");
-    $("adminBox").classList.remove("hidden");
-    $("userInfo").textContent=session.user.email||"Usuário autenticado";
-    await loadDashboard();
-  }catch(e){
-    console.error(e);
-  }
+  const {data:{session}}=await client.auth.getSession();
+  if(!session){$("loginBox").classList.remove("hidden");$("adminBox").classList.add("hidden");return}
+  const {data,isError,error}=await client.rpc("is_admin");
+  if(error||data!==true){await client.auth.signOut();msg($("loginMsg"),"Este usuário não possui acesso administrativo.","error");return}
+  $("loginBox").classList.add("hidden");$("adminBox").classList.remove("hidden");$("userInfo").textContent=session.user.email||"Usuário autenticado";
 }
-$("logoutBtn").onclick=async()=>{if(client)await client.auth.signOut();location.reload()};
-
-async function loadDashboard(){
-  const {data,error}=await client.from("import_batches")
-    .select("id,file_name,imported_at,row_count,status,notes")
-    .order("imported_at",{ascending:false}).limit(20);
-  if(error){msg($("dashMsg"),"Não foi possível carregar o painel: "+error.message,"error");return}
-  const rows=data||[];
-  const active=rows.find(x=>x.status==="active")||null;
-  $("dashRows").textContent=active?.row_count!=null?Number(active.row_count).toLocaleString("pt-BR"):"—";
-  $("dashVersions").textContent=rows.length.toLocaleString("pt-BR");
-  $("dashDate").textContent=active?.imported_at?new Date(active.imported_at).toLocaleString("pt-BR"):"—";
-  $("dashMsg").innerHTML="";
-  $("historyList").innerHTML=rows.length?rows.map(x=>{
-    const d=x.imported_at?new Date(x.imported_at).toLocaleString("pt-BR"):"—";
-    const status=x.status==="active"?"ATUAL":(x.status||"—").toUpperCase();
-    return '<div class="history-row"><b>'+esc(x.file_name||"Sem nome")+'</b><span class="small">'+Number(x.row_count||0).toLocaleString("pt-BR")+' registros · '+d+'</span><br><span class="badge '+(x.status==="active"?"active":"archived")+'">'+status+'</span></div>';
-  }).join(""):"<div class="history-row">Nenhuma importação encontrada.</div>";
-}
-function esc(v){return String(v).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m]))}
-$("refreshDashBtn").onclick=loadDashboard;
+$("loginBtn").onclick=async()=>{
+  const email=$("email").value.trim(),password=$("password").value;
+  $("loginBtn").disabled=true;
+  const {error}=await client.auth.signInWithPassword({email,password});
+  if(error)msg($("loginMsg"),error.message,"error"); else {msg($("loginMsg"),"Login realizado.");await checkAdmin()}
+  $("loginBtn").disabled=false;
+};
+$("logoutBtn").onclick=async()=>{await client.auth.signOut();location.reload()};
 $("file").onchange=()=>{selectedFile=$("file").files[0]||null;$("validateBtn").disabled=!selectedFile;preparedRows=null;$("importBtn").classList.add("hidden");$("summary").innerHTML="";$("fileMsg").innerHTML=""};
 
 $("validateBtn").onclick=async()=>{
@@ -217,7 +127,7 @@ $("importBtn").onclick=async()=>{
     const {error:act}=await client.from("import_batches").update({status:"active",row_count:preparedRows.length}).eq("id",batchId);
     if(act)throw act;
     $("progress").innerHTML='<div class="msg ok"><b>Importação concluída!</b><br>'+preparedRows.length.toLocaleString("pt-BR")+' registros agora estão na base atual.</div>';
-    $("importBtn").classList.add("hidden");preparedRows=null;await loadDashboard();
+    $("importBtn").classList.add("hidden");preparedRows=null;
   }catch(e){
     $("progress").innerHTML='<div class="msg error"><b>Importação interrompida.</b><br>'+((e&&e.message)||"Erro desconhecido")+'<br><span class="small">A versão anterior continua preservada se a nova não foi ativada.</span></div>';
   }finally{$("importBtn").disabled=false;$("validateBtn").disabled=false}
