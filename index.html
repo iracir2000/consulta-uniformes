@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0f766e">
 <title>Consulta de Uniformes</title>
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="icon" type="image/svg+xml" href="./icon.svg">
+<link rel="apple-touch-icon" href="./icon.svg">
 <style>
 *{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:#f4f7f7;color:#18312f}
 .container{max-width:520px;margin:auto;padding:20px}header{text-align:center;padding:20px 0 10px}
@@ -46,4 +49,9 @@ card("👖","Calça",p.ultima_calca,p.proxima_calca,p.direito_calca)+'</div>';
 }catch(e){const msg=e?.message||e?.error_description||JSON.stringify(e);out.innerHTML='<div class="error"><b>Erro na consulta:</b><br>'+msg+'</div>';console.error(e)}
 finally{btn.disabled=false;loading.style.display="none"}}
 btn.addEventListener("click",consultar);input.addEventListener("keydown",e=>{if(e.key==="Enter")consultar()});
+</script>
+<script>
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js").catch(err => console.warn("PWA indisponível:", err)));
+}
 </script></body></html>
